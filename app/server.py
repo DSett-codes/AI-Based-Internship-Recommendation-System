@@ -1,14 +1,17 @@
-"""Minimal Flask app exposing the recommendation engine."""
+"""Simple Flask app that trains a tiny model and serves predictions."""
 from __future__ import annotations
 
 from flask import Flask, jsonify, render_template_string, request
 
-from .model import RecommendationEngine
+from .model import predict_top_careers, train_model
 
 app = Flask(__name__)
-engine = RecommendationEngine()
 
-FORM_TEMPLATE = """
+# Train once when the server starts so requests are fast.
+MODEL, CAREERS = train_model()
+
+
+PAGE = """
 <!doctype html>
 <html lang="en">
 <head>
@@ -16,40 +19,39 @@ FORM_TEMPLATE = """
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Internship Recommender</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 780px; margin: auto; padding: 1rem; }
-    label { display: block; margin-top: 0.5rem; font-weight: bold; }
-    input, textarea { width: 100%; padding: 0.4rem; margin-top: 0.25rem; }
-    button { margin-top: 0.75rem; padding: 0.5rem 1rem; }
-    .result { margin-top: 1rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 6px; }
+    body { font-family: Arial, sans-serif; max-width: 720px; margin: auto; padding: 1rem; }
+    form { display: grid; gap: 0.5rem; }
+    label { font-weight: bold; }
+    textarea, input { width: 100%; padding: 0.45rem; }
+    button { padding: 0.6rem 0.9rem; font-size: 1rem; }
+    .card { margin-top: 1rem; padding: 0.75rem; border: 1px solid #ddd; border-radius: 6px; }
   </style>
 </head>
 <body>
-  <h1>AI-Based Internship Recommendation</h1>
+  <h1>AI Internship Recommendation (Beginner Version)</h1>
+  <p>This demo trains a small TF-IDF + Logistic Regression model on the dataset when the app starts.</p>
   <form method="post">
-    <label>Education</label>
-    <input type="text" name="education" required placeholder="Bachelor's" />
+    <label>Education level</label>
+    <input type="text" name="education" required placeholder="Bachelor's in Computer Science" />
 
-    <label>Skills</label>
-    <textarea name="skills" required placeholder="python; data analysis; machine learning"></textarea>
+    <label>Skills (separate with commas)</label>
+    <textarea name="skills" required placeholder="python, data analysis, machine learning"></textarea>
 
     <label>Interests</label>
-    <textarea name="interests" required placeholder="ai; analytics"></textarea>
-
-    <label>Age (optional)</label>
-    <input type="number" name="age" />
+    <textarea name="interests" required placeholder="ai, analytics"></textarea>
 
     <label>How many results?</label>
     <input type="number" name="limit" value="3" min="1" max="5" />
 
-    <button type="submit">Recommend internships</button>
+    <button type="submit">Get recommendations</button>
   </form>
 
   {% if recommendations %}
-    <h2>Top recommendations</h2>
+    <h2>Top matches</h2>
     {% for rec in recommendations %}
-      <div class="result">
-        <strong>{{ loop.index }}. {{ rec.career }}</strong> — score {{ '%.2f' % rec.probability }}<br/>
-        <small>{{ rec.rationale }}</small>
+      <div class="card">
+        <strong>{{ loop.index }}. {{ rec.career }}</strong><br/>
+        Probability: {{ '%.2f' % rec.probability }}
       </div>
     {% endfor %}
   {% endif %}
@@ -58,39 +60,31 @@ FORM_TEMPLATE = """
 """
 
 
-def parse_request_data(req) -> dict:
-    data = req.get_json(silent=True) or {}
-    if not data:
-        data = req.form.to_dict()
+def parse_payload(req) -> dict:
+    data = req.get_json(silent=True) or req.form.to_dict()
     return {
         "education": data.get("education", ""),
         "skills": data.get("skills", ""),
         "interests": data.get("interests", ""),
-        "age": int(data["age"]) if data.get("age") else None,
     }
+
+
+@app.route("/", methods=["GET", "POST"])
+def home():
+    recommendations = None
+    if request.method == "POST":
+        payload = parse_payload(request)
+        limit = int(request.form.get("limit", 3))
+        recommendations = predict_top_careers(MODEL, CAREERS, payload, top_n=limit)
+    return render_template_string(PAGE, recommendations=recommendations)
 
 
 @app.route("/api/recommend", methods=["POST"])
 def api_recommend():
-    payload = parse_request_data(request)
+    payload = parse_payload(request)
     limit = int(request.args.get("limit", request.form.get("limit", 3)))
-    results = engine.recommend(payload, top_n=limit)
-    return jsonify(
-        [
-            {"career": r.career, "probability": r.probability, "rationale": r.rationale}
-            for r in results
-        ]
-    )
-
-
-@app.route("/", methods=["GET", "POST"])
-def form():
-    recommendations = None
-    if request.method == "POST":
-        payload = parse_request_data(request)
-        limit = int(request.form.get("limit", 3))
-        recommendations = engine.recommend(payload, top_n=limit)
-    return render_template_string(FORM_TEMPLATE, recommendations=recommendations)
+    results = predict_top_careers(MODEL, CAREERS, payload, top_n=limit)
+    return jsonify(results)
 
 
 if __name__ == "__main__":
