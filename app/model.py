@@ -12,6 +12,7 @@ from typing import List, Tuple
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.pipeline import Pipeline
 
 from .data_utils import load_dataset
@@ -37,7 +38,7 @@ def build_pipeline() -> Pipeline:
     return Pipeline(
         steps=[
             ("tfidf", TfidfVectorizer(ngram_range=(1, 2), max_features=500)),
-            ("clf", LogisticRegression(max_iter=300)),
+            ("clf", HistGradientBoostingClassifier(max_iter=300)),
         ]
     )
 
