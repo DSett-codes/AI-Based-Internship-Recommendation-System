@@ -1,4 +1,4 @@
-# AI-Based Internship Recommendation System (Beginner Flask Demo)
+# AI-Based Internship Recommendation System
 
 This is a very small machine learning web app built with Flask. When the server
 starts, it trains a TF-IDF + Logistic Regression model on the provided dataset
